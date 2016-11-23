@@ -7,7 +7,9 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#define SIZE 3
+#define SIZE 32
+
+#define FAKE_SIZE (SIZE + 2)
 
 typedef struct {
   float ***data;
@@ -30,95 +32,109 @@ Imagem* new_image(int w, int h) {
 
 #define PI acosf(-1)
 
-__global__ void kernel(float *R, float *G, float *B, float *nR, float *nG, float *nB) {
-	int x = blockIdx.x;
-	int y = blockIdx.y;
+__device__ void get_components(int x, int y, float theta, float *V, float *outx, float *outy) {
+  *outx = V[y*FAKE_SIZE + x]*sinf(theta);
+  *outy = V[y*FAKE_SIZE + x]*cosf(theta);
+}
 
-  float theta = G[y*SIZE + x]*2*PI;
+__device__ float get_theta(int x, int y, float *V) {
+  return V[y*FAKE_SIZE + x]*2*PI;
+}
 
-  float Rx = R[y*SIZE + x]*sinf(theta);
-  float Ry = R[y*SIZE + x]*cosf(theta);
+__global__ void kernel(float *R, float *G, float *B, float *Rx, float *Ry, float *Bx, float *By) {
+	int x = blockIdx.x + 1;
+	int y = blockIdx.y + 1;
 
-  float Bx = -B[y*SIZE + x]*sinf(theta);
-  float By = -B[y*SIZE + x]*cosf(theta);
+  float theta = get_theta(x, y, G);
+
+  float contribRx, contribRy;
+  get_components(x, y, theta, R, &contribRx, &contribRy);
+
+  float contribBx, contribBy;
+  get_components(x, y, theta, B, &contribBx, &contribBy);
+  contribBx *= -1;
+  contribBy *= -1;
 
   int xx = 0;
   int yy = 0;
 
-  if (Rx > 0) {
-    if (x < SIZE - 1) {
-      xx = 1;
-    }
+  if (contribRx > 0) {
+    xx = 1;
   } else {
-    if (x > 0) {
-      xx = -1;
-    }
+    xx = -1;
   }
-  if (Ry > 0) {
-    if (y < SIZE - 1) {
-      yy = 1;
-    }
+  if (contribRy > 0) {
+    yy = 1;
   } else {
-    if (y > 0) {
-      yy = -1;
-    }
+    yy = -1;
   }
 
-    printf("[%d %d] = (%f, %f, %f)\nAng G: %f Rx: %f Ry: %f Bx: %f By: %f\n", x, y, R[y*SIZE + x], G[y*SIZE + x], B[y*SIZE + x], theta, Rx, Ry, Bx, By);
+    printf("[%d %d] = (%f, %f, %f)\nAng G: %f contribRx: %f contribRy: %f contribBx: %f contribBy: %f\n", x, y, R[y*FAKE_SIZE + x], G[y*FAKE_SIZE + x], B[y*FAKE_SIZE + x], theta, contribRx, contribRy, contribBx, contribBy);
     printf("[%d, %d] -> [%d, %d]\n", x, y, x + xx, y);
     printf("[%d, %d] -> [%d, %d]\n", x, y, x, y + yy);
 
+  float deltaRx = (1 - R[y*FAKE_SIZE + (x + xx)])*contribRx/4.0;
+  float deltaRy = (1 - R[(y + yy)*FAKE_SIZE + x])*contribRy/4.0;
 
-  float deltaRx = (1 - R[y*SIZE + (x + xx)])*Rx/4.0;
-  float deltaRy = (1 - R[(y + yy)*SIZE + x])*Ry/4.0;
-
-  float deltaBx = (1 - B[y*SIZE + (x - xx)])*Bx/4.0;
-  float deltaBy = (1 - B[(y - yy)*SIZE + x])*By/4.0;
+  float deltaBx = (1 - B[y*FAKE_SIZE + (x - xx)])*contribBx/4.0;
+  float deltaBy = (1 - B[(y - yy)*FAKE_SIZE + x])*contribBy/4.0;
 
   if (xx != 0) {
-    atomicAdd(&nR[y*SIZE + (x + xx)], deltaRx);
-    atomicAdd(&nB[y*SIZE + (x - xx)], deltaBx);
+    atomicAdd(&Rx[y*FAKE_SIZE + (x + xx)], deltaRx);
+    atomicSub(&Rx[y*FAKE_SIZE + x], deltaRx);
+
+    atomicAdd(&Bx[y*FAKE_SIZE + (x - xx)], deltaBx);
+    atomicSub(&Bx[y*FAKE_SIZE + x], deltaBx);
   }
   if (yy != 0) {
-    atomicAdd(&nR[(y + yy)*SIZE + x], deltaRy);
-    atomicAdd(&nB[(y - yy)*SIZE + x], deltaBy);
+    atomicAdd(&Ry[(y + yy)*FAKE_SIZE + x], deltaRy);
+    atomicSub(&Ry[y*FAKE_SIZE + x], deltaRy);
+
+    atomicAdd(&By[(y - yy)*FAKE_SIZE + x], deltaBy);
+    atomicSub(&By[y*FAKE_SIZE + x], deltaBy);
   }
 	
   return;
 }
 
-__global__ void kernel2(float *nR, float *nG, float *nB, float *R, float *G, float *B) {
-	int x = blockIdx.x;
-	int y = blockIdx.y;
-	
-	if (nR[x] > 1) {
-		float tmp = nR[x] - 1;
-		if (x == 1) {
-			atomicAdd(&nR[x + 1], tmp/2);
-			atomicAdd(&nR[x + SIZE], tmp/2);
-		} else if (x == SIZE - 1) {
-			atomicAdd(&nR[x - 1], tmp/2);
-			atomicAdd(&nR[x + SIZE], tmp/2);
-		} else if (x == SIZE*SIZE - 32 - 1) {
-			atomicAdd(&nR[x + 1], tmp/2);
-			atomicAdd(&nR[x - SIZE], tmp/2);
-		} else if (x == SIZE*SIZE - 1) {
-			atomicAdd(&nR[x - 1], tmp/2);
-			atomicAdd(&nR[x - SIZE], tmp/2);
-		}
-	}
+__global__ void calc_components(float *R, float *G, float *B, float *Rx, float *Ry, float *Bx, float *By) {
+	int x = blockIdx.x + 1;
+	int y = blockIdx.y + 1;
+
+  get_components(x, y, get_theta(x, y, R), R, &Rx[y*FAKE_SIZE + x], &Ry[y*FAKE_SIZE + x]);
+  get_components(x, y, get_theta(x, y, B), B, &Bx[y*FAKE_SIZE + x], &By[y*FAKE_SIZE + x]);
+  Bx[y*FAKE_SIZE + x] *= -1;
+  By[y*FAKE_SIZE + x] *= -1;
+}
+
+__global__ void recalc_magnitudes(float *Rx, float *Ry, float *Bx, float *By, float *R, float *B) {
+	int x = blockIdx.x + 1;
+	int y = blockIdx.y + 1;
+
+  float rx = Rx[y*FAKE_SIZE + x];
+  float ry = Ry[y*FAKE_SIZE + x];
+  float r = sqrtf((rx*rx)+(ry*ry));
+  R[y*FAKE_SIZE + x] = r;
+
+  float bx = Bx[y*FAKE_SIZE + x];
+  float by = By[y*FAKE_SIZE + x];
+  float b = sqrtf((bx*bx)+(by*by));
+  B[y*FAKE_SIZE + x] = b;
+
+  //atomicAdd(&G[y*FAKE_SIZE + x], atan2f(b, r));
 }
 
 // the wrapper around the kernel call for main program to call.
-extern "C" void kernel_wrapper(int num_procs, float *R, float *G, float *B, float *nR, float *nG, float *nB) {
+extern "C" void kernel_wrapper(int num_procs, float *R, float *G, float *B, float *Rx, float *Ry, float *Bx, float *By) {
   dim3 image_size(SIZE, SIZE);
-	kernel<<<image_size, 1>>>(R, G, B, nR, nG, nB);
-}
-
-// the wrapper around the kernel call for main program to call.
-extern "C" void kernel2_wrapper(int num_procs, float *nR, float *nG, float *nB, float *R, float *G, float *B) {
-  dim3 image_size(SIZE);
-	kernel<<<image_size, 1>>>(nR, nG, nB, R, G, B);
+  calc_components<<<image_size, 1>>>(R, G, B, Rx, Ry, Bx, By);
+	kernel<<<image_size, 1>>>(R, G, B, Rx, Ry, Bx, By);
+  recalc_magnitudes<<<image_size, 1>>>(Rx, Ry, Bx, By, R, B);
+  //redistribuicao
+  // re-redistribui das bordas pra dentro
+  // corta > 1
+  // calc G`
+  // copia valores da gpu pra cpu ??
 }
 
 int main(int argc, char const *argv[]) {	
@@ -133,32 +149,30 @@ int main(int argc, char const *argv[]) {
 
   srand(time(NULL));
 
-  float *R = (float*)malloc(SIZE*SIZE*sizeof(float));
-  float *G = (float*)malloc(SIZE*SIZE*sizeof(float));
-  float *B = (float*)malloc(SIZE*SIZE*sizeof(float));
-  float *gR, *gG, *gB, *nR, *nG, *nB;
+  float *R = (float*)malloc(FAKE_SIZE*FAKE_SIZE*sizeof(float));
+  float *G = (float*)malloc(FAKE_SIZE*FAKE_SIZE*sizeof(float));
+  float *B = (float*)malloc(FAKE_SIZE*FAKE_SIZE*sizeof(float));
+  float *gR, *gG, *gB, *nR, *nG, *nB, *nN;
 
-  for (int i = 0; i < SIZE; i++) {
-    for (int j = 0; j < SIZE; j++) {
-      R[i*SIZE + j] = ((float)rand()/RAND_MAX);
-      G[i*SIZE + j] = ((float)rand()/RAND_MAX);
-      B[i*SIZE + j] = ((float)rand()/RAND_MAX);
+  for (int i = 0; i < FAKE_SIZE; i++) {
+    for (int j = 0; j < FAKE_SIZE; j++) {
+      R[i*FAKE_SIZE + j] = ((float)rand()/RAND_MAX);
+      G[i*FAKE_SIZE + j] = ((float)rand()/RAND_MAX);
+      B[i*FAKE_SIZE + j] = ((float)rand()/RAND_MAX);
     }
   }
 
-  cudaMalloc((void**)&gR, SIZE*SIZE*sizeof(float));
-  cudaMalloc((void**)&gG, SIZE*SIZE*sizeof(float));
-  cudaMalloc((void**)&gB, SIZE*SIZE*sizeof(float));
-  cudaMalloc((void**)&nR, SIZE*SIZE*sizeof(float));
-  cudaMalloc((void**)&nG, SIZE*SIZE*sizeof(float));
-  cudaMalloc((void**)&nB, SIZE*SIZE*sizeof(float));
+  cudaMalloc((void**)&gR, FAKE_SIZE*FAKE_SIZE*sizeof(float));
+  cudaMalloc((void**)&gG, FAKE_SIZE*FAKE_SIZE*sizeof(float));
+  cudaMalloc((void**)&gB, FAKE_SIZE*FAKE_SIZE*sizeof(float));
+  cudaMalloc((void**)&nR, FAKE_SIZE*FAKE_SIZE*sizeof(float));
+  cudaMalloc((void**)&nG, FAKE_SIZE*FAKE_SIZE*sizeof(float));
+  cudaMalloc((void**)&nB, FAKE_SIZE*FAKE_SIZE*sizeof(float));
+  cudaMalloc((void**)&nN, FAKE_SIZE*FAKE_SIZE*sizeof(float));
 
-  cudaMemcpy(gR, R, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(gG, G, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(gB, B, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(nR, R, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(nG, G, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(nB, B, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(gR, R, FAKE_SIZE*FAKE_SIZE*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(gG, G, FAKE_SIZE*FAKE_SIZE*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(gB, B, FAKE_SIZE*FAKE_SIZE*sizeof(float), cudaMemcpyHostToDevice);
     
 	assert(cudaGetLastError() == cudaSuccess);
 	printf("%s\n", cudaGetErrorString(cudaGetLastError()));
@@ -170,15 +184,9 @@ int main(int argc, char const *argv[]) {
 		
 		start = clock();
     // bagulhos aqui
-    kernel_wrapper(num_procs, gR, gG, gB, nR, nG, nB);
+    kernel_wrapper(num_procs, gR, gG, gB, nR, nG, nB, nN);
 		stop = clock();
 
-    cudaMemcpy(R, gR, SIZE*SIZE*sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(G, gG, SIZE*SIZE*sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(B, gB, SIZE*SIZE*sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(nR, R, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(nG, G, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(nB, B, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
     assert(cudaGetLastError() == cudaSuccess);
 	}
 
