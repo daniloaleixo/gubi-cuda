@@ -87,12 +87,39 @@ __global__ void kernel(float *R, float *G, float *B, float *nR, float *nG, float
   return;
 }
 
+__global__ void kernel2(float *nR, float *nG, float *nB, float *R, float *G, float *B) {
+	int x = blockIdx.x;
+	int y = blockIdx.y;
+	
+	if (nR[x] > 1) {
+		float tmp = nR[x] - 1;
+		if (x == 1) {
+			atomicAdd(&nR[x + 1], tmp/2);
+			atomicAdd(&nR[x + SIZE], tmp/2);
+		} else if (x == SIZE - 1) {
+			atomicAdd(&nR[x - 1], tmp/2);
+			atomicAdd(&nR[x + SIZE], tmp/2);
+		} else if (x == SIZE*SIZE - 32 - 1) {
+			atomicAdd(&nR[x + 1], tmp/2);
+			atomicAdd(&nR[x - SIZE], tmp/2);
+		} else if (x == SIZE*SIZE - 1) {
+			atomicAdd(&nR[x - 1], tmp/2);
+			atomicAdd(&nR[x - SIZE], tmp/2);
+		}
+	}
+}
+
 // the wrapper around the kernel call for main program to call.
 extern "C" void kernel_wrapper(int num_procs, float *R, float *G, float *B, float *nR, float *nG, float *nB) {
   dim3 image_size(SIZE, SIZE);
 	kernel<<<image_size, 1>>>(R, G, B, nR, nG, nB);
 }
 
+// the wrapper around the kernel call for main program to call.
+extern "C" void kernel2_wrapper(int num_procs, float *nR, float *nG, float *nB, float *R, float *G, float *B) {
+  dim3 image_size(SIZE);
+	kernel<<<image_size, 1>>>(nR, nG, nB, R, G, B);
+}
 
 int main(int argc, char const *argv[]) {	
   if (argc != 5) {
