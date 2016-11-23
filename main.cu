@@ -124,14 +124,48 @@ __global__ void recalc_magnitudes(float *Rx, float *Ry, float *Bx, float *By, fl
   //atomicAdd(&G[y*FAKE_SIZE + x], atan2f(b, r));
 }
 
+__global__ void redist(float *nR, float *nB, float *R, float *B) {
+	int x = blockIdx.x + 1;
+	int y = blockIdx.y + 1;
+
+  if (R[y*FAKE_SIZE + x] > 1) {
+		int tmp = 1 - R[y*FAKE_SIZE + x];
+		R[y*FAKE_SIZE + x] = 1;
+		atomicAdd(&nR[y*FAKE_SIZE + x + 1], tmp/4);
+		atomicAdd(&nR[y*FAKE_SIZE + x - 1], tmp/4);
+		atomicAdd(&nR[y*FAKE_SIZE + x + FAKE_SIZE], tmp/4);
+		atomicAdd(&nR[y*FAKE_SIZE + x - FAKE_SIZE], tmp/4);
+	}
+  //todo sera que vale a pena fazer num outro kernel? 
+  if (B[y*FAKE_SIZE + x] > 1) {
+		int tmp = 1 - B[y*FAKE_SIZE + x];
+		B[y*FAKE_SIZE + x] = 1;
+		atomicAdd(&nB[y*FAKE_SIZE + x + 1], tmp/4);
+		atomicAdd(&nB[y*FAKE_SIZE + x - 1], tmp/4);
+		atomicAdd(&nB[y*FAKE_SIZE + x + FAKE_SIZE], tmp/4);
+		atomicAdd(&nB[y*FAKE_SIZE + x - FAKE_SIZE], tmp/4);
+	}
+
+}
+
+__global__ void re_redist(float *nR, float *nB, float *R, float *B) {
+	int x = blockIdx.x + 1;
+
+	atomicAdd(&nR[x + SIZE_FAKE], &R[x]);
+	atomicAdd(R[x * SIZE_FAKE + 1], R[x * SIZE_FAKE]);
+	atomicAdd(R[x * SIZE_FAKE + SIZE_FAKE - 2], R[x * SIZE_FAKE + SIZE_FAKE - 1]);
+	atomicAdd(R[SIZE_FAKE * SIZE_FAKE - 1 - x - SIZE_FAKE], R[SIZE_FAKE * SIZE_FAKE - 1 - x]);
+}
+
 // the wrapper around the kernel call for main program to call.
 extern "C" void kernel_wrapper(int num_procs, float *R, float *G, float *B, float *Rx, float *Ry, float *Bx, float *By) {
   dim3 image_size(SIZE, SIZE);
   calc_components<<<image_size, 1>>>(R, G, B, Rx, Ry, Bx, By);
 	kernel<<<image_size, 1>>>(R, G, B, Rx, Ry, Bx, By);
   recalc_magnitudes<<<image_size, 1>>>(Rx, Ry, Bx, By, R, B);
-  //redistribuicao
-  // re-redistribui das bordas pra dentro
+  redist<<<image_size, 1>>>(Rx, Bx, R, B);
+	//lembrar que elas serao reescritas para as responsaveis pela componentes
+  re_redist<<<SIZE_FAKE-2, 1>>>(Rx, Bx, R, B);
   // corta > 1
   // calc G`
   // copia valores da gpu pra cpu ??
