@@ -7,6 +7,8 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#define SIZE 3
+
 typedef struct {
   float ***data;
   int width, height;
@@ -32,23 +34,19 @@ __global__ void kernel(float *R, float *G, float *B, float *nR, float *nG, float
 	int x = blockIdx.x;
 	int y = blockIdx.y;
 
-  float theta = G[y*32 + x]*2*PI;
+  float theta = G[y*SIZE + x]*2*PI;
 
-  float Rx = R[y*32 + x]*sinf(theta);
-  float Ry = R[y*32 + x]*cosf(theta);
+  float Rx = R[y*SIZE + x]*sinf(theta);
+  float Ry = R[y*SIZE + x]*cosf(theta);
 
-  float Bx = -B[y*32 + x]*sinf(theta);
-  float By = -B[y*32 + x]*cosf(theta);
-
-  if (x % 17 == 0) {
-    printf("[%d %d] = (%f, %f, %f)\nAng G: %f Rx: %f Ry: %f Bx: %f By: %f\n", x, y, R[y*32 + x], G[y*32 + x], B[y*32 + x], theta, Rx, Ry, Bx, By);
-  }
+  float Bx = -B[y*SIZE + x]*sinf(theta);
+  float By = -B[y*SIZE + x]*cosf(theta);
 
   int xx = 0;
   int yy = 0;
 
   if (Rx > 0) {
-    if (x < 32 - 1) {
+    if (x < SIZE - 1) {
       xx = 1;
     }
   } else {
@@ -57,7 +55,7 @@ __global__ void kernel(float *R, float *G, float *B, float *nR, float *nG, float
     }
   }
   if (Ry > 0) {
-    if (y < 32 - 1) {
+    if (y < SIZE - 1) {
       yy = 1;
     }
   } else {
@@ -65,13 +63,33 @@ __global__ void kernel(float *R, float *G, float *B, float *nR, float *nG, float
       yy = -1;
     }
   }
+
+    printf("[%d %d] = (%f, %f, %f)\nAng G: %f Rx: %f Ry: %f Bx: %f By: %f\n", x, y, R[y*SIZE + x], G[y*SIZE + x], B[y*SIZE + x], theta, Rx, Ry, Bx, By);
+    printf("[%d, %d] -> [%d, %d]\n", x, y, x + xx, y);
+    printf("[%d, %d] -> [%d, %d]\n", x, y, x, y + yy);
+
+
+  float deltaRx = (1 - R[y*SIZE + (x + xx)])*Rx/4.0;
+  float deltaRy = (1 - R[(y + yy)*SIZE + x])*Ry/4.0;
+
+  float deltaBx = (1 - B[y*SIZE + (x - xx)])*Bx/4.0;
+  float deltaBy = (1 - B[(y - yy)*SIZE + x])*By/4.0;
+
+  if (xx != 0) {
+    atomicAdd(&nR[y*SIZE + (x + xx)], deltaRx);
+    atomicAdd(&nB[y*SIZE + (x - xx)], deltaBx);
+  }
+  if (yy != 0) {
+    atomicAdd(&nR[(y + yy)*SIZE + x], deltaRy);
+    atomicAdd(&nB[(y - yy)*SIZE + x], deltaBy);
+  }
 	
   return;
 }
 
 // the wrapper around the kernel call for main program to call.
 extern "C" void kernel_wrapper(int num_procs, float *R, float *G, float *B, float *nR, float *nG, float *nB) {
-  dim3 image_size(32, 32);
+  dim3 image_size(SIZE, SIZE);
 	kernel<<<image_size, 1>>>(R, G, B, nR, nG, nB);
 }
 
@@ -88,32 +106,32 @@ int main(int argc, char const *argv[]) {
 
   srand(time(NULL));
 
-  float *R = (float*)malloc(32*32*sizeof(float));
-  float *G = (float*)malloc(32*32*sizeof(float));
-  float *B = (float*)malloc(32*32*sizeof(float));
+  float *R = (float*)malloc(SIZE*SIZE*sizeof(float));
+  float *G = (float*)malloc(SIZE*SIZE*sizeof(float));
+  float *B = (float*)malloc(SIZE*SIZE*sizeof(float));
   float *gR, *gG, *gB, *nR, *nG, *nB;
 
-  for (int i = 0; i < 32; i++) {
-    for (int j = 0; j < 32; j++) {
-      R[i*32 + j] = ((float)rand()/RAND_MAX);
-      G[i*32 + j] = ((float)rand()/RAND_MAX);
-      B[i*32 + j] = ((float)rand()/RAND_MAX);
+  for (int i = 0; i < SIZE; i++) {
+    for (int j = 0; j < SIZE; j++) {
+      R[i*SIZE + j] = ((float)rand()/RAND_MAX);
+      G[i*SIZE + j] = ((float)rand()/RAND_MAX);
+      B[i*SIZE + j] = ((float)rand()/RAND_MAX);
     }
   }
 
-  cudaMalloc((void**)&gR, 32*32*sizeof(float));
-  cudaMalloc((void**)&gG, 32*32*sizeof(float));
-  cudaMalloc((void**)&gB, 32*32*sizeof(float));
-  cudaMalloc((void**)&nR, 32*32*sizeof(float));
-  cudaMalloc((void**)&nG, 32*32*sizeof(float));
-  cudaMalloc((void**)&nB, 32*32*sizeof(float));
+  cudaMalloc((void**)&gR, SIZE*SIZE*sizeof(float));
+  cudaMalloc((void**)&gG, SIZE*SIZE*sizeof(float));
+  cudaMalloc((void**)&gB, SIZE*SIZE*sizeof(float));
+  cudaMalloc((void**)&nR, SIZE*SIZE*sizeof(float));
+  cudaMalloc((void**)&nG, SIZE*SIZE*sizeof(float));
+  cudaMalloc((void**)&nB, SIZE*SIZE*sizeof(float));
 
-  cudaMemcpy(gR, R, 32*32*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(gG, G, 32*32*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(gB, B, 32*32*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(nR, R, 32*32*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(nG, G, 32*32*sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy(nB, B, 32*32*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(gR, R, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(gG, G, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(gB, B, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(nR, R, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(nG, G, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(nB, B, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
     
 	assert(cudaGetLastError() == cudaSuccess);
 	printf("%s\n", cudaGetErrorString(cudaGetLastError()));
@@ -128,12 +146,12 @@ int main(int argc, char const *argv[]) {
     kernel_wrapper(num_procs, gR, gG, gB, nR, nG, nB);
 		stop = clock();
 
-    cudaMemcpy(R, gR, 32*32*sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(G, gG, 32*32*sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(B, gB, 32*32*sizeof(float), cudaMemcpyDeviceToHost);
-    cudaMemcpy(nR, R, 32*32*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(nG, G, 32*32*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(nB, B, 32*32*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(R, gR, SIZE*SIZE*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(G, gG, SIZE*SIZE*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(B, gB, SIZE*SIZE*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(nR, R, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(nG, G, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(nB, B, SIZE*SIZE*sizeof(float), cudaMemcpyHostToDevice);
     assert(cudaGetLastError() == cudaSuccess);
 	}
 
