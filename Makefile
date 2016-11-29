@@ -1,19 +1,24 @@
-PROJECT_NAME = altfisica
+#
+#  MAC0431 - Introducao a Programacao Paralela e Distribuida
+#
+# Fisica Alternativa
+#
+# Bruno Endo       - 7990982
+# Danilo Aleixo    - 7972370
+# Gustavo Caparica - 7991020
+#
 
-# NVCC is path to nvcc. Here it is assumed /opt/cuda is on one's PATH.
-# CC is the compiler for C++ host code.
+# NOTA: modifique para o caminho de instalacao do CUDA na sua maquina
+CUDAPATH = $(which nvcc | sed 's!/bin/nvcc!!')
 
 NVCC = nvcc
 CC = clang
 
-CUDAPATH = /opt/cuda
-
+PROJECT_NAME = altfisica
 BUILD_DIR = build
-# note that nvcc defaults to 32-bit architecture. thus, force C/LFLAGS to comply.
-# you could also force nvcc to compile 64-bit with -m64 flag. (and remove -m32 instances)
 
-CFLAGS = -c -m64 -I$(CUDAPATH)/include -I/opt/cuda/samples/common/inc/
-NVCCFLAGS = -c -I$(CUDAPATH)/include -I/opt/cuda/samples/common/inc/
+CFLAGS = -O3 -c -m64 -I$(CUDAPATH)/include -I/opt/cuda/samples/common/inc/
+NVCCFLAGS = -O3 -c -I$(CUDAPATH)/include -I/opt/cuda/samples/common/inc/
 LFLAGS = -m64 -L$(CUDAPATH)/lib -lcuda -lcudart -lm
 
 all: build clean
@@ -29,6 +34,3 @@ gpu:
 
 clean:
 	rm -f *.o
-
-run:
-	./$(BUILD_DIR)/$(PROJECT_NAME)
