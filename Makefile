@@ -16,17 +16,16 @@ CC = gcc
 
 PROJECT_NAME = altfisica
 
-CFLAGS = -O3 -c -m64 -I$(CUDAPATH)/include -I/opt/cuda/samples/common/inc/
-NVCCFLAGS = -O3 -c -I$(CUDAPATH)/include -I/opt/cuda/samples/common/inc/
+NVCCFLAGS = -O3 --compiler-options='-Wno-unused-result -march=native' -c -I$(CUDAPATH)/include -I$(CUDAPATH)/samples/common/inc/
 LFLAGS = -m64 -L$(CUDAPATH)/lib -lcuda -lcudart -lm
 
-all: build clean
+all: build
 
 build: gpu
-	$(NVCC) $(LFLAGS) -o $(PROJECT_NAME) *.o
+	$(NVCC) $(NVCCFLAGS) $(LFLAGS) -o $(PROJECT_NAME) *.o
 
 gpu:
 	$(NVCC) $(NVCCFLAGS) *.cu
 
 clean:
-	rm -f *.o
+	rm -f *.o $(PROJECT_NAME)
