@@ -144,6 +144,15 @@ __global__ void re_redist_w(float *R, float *B) {
 
   atomicAdd(&R[x + BORDERW], R[x]);
   atomicAdd(&R[FAKE_SIZE - 1 - x - BORDERW], R[FAKE_SIZE - 1 - x]);
+
+  atomicAdd(&B[x + BORDERW], B[x]);
+  atomicAdd(&B[FAKE_SIZE - 1 - x - BORDERW], B[FAKE_SIZE - 1 - x]);
+
+  R[x] = 0;
+  R[FAKE_SIZE - 1 - x] = 0;
+
+  B[x] = 0;
+  B[FAKE_SIZE - 1 - x] = 0;
 }
 
 __global__ void re_redist_h(float *R, float *B) {
@@ -151,6 +160,15 @@ __global__ void re_redist_h(float *R, float *B) {
 
   atomicAdd(&R[x * BORDERW + 1], R[x * BORDERW]);
   atomicAdd(&R[x * BORDERW + BORDERW - 2], R[x * BORDERW + BORDERW - 1]);
+
+  atomicAdd(&B[x * BORDERW + 1], B[x * BORDERW]);
+  atomicAdd(&B[x * BORDERW + BORDERW - 2], B[x * BORDERW + BORDERW - 1]);
+
+  R[x * BORDERW] = 0;
+  R[x * BORDERW + BORDERW - 1] = 0;
+
+  B[x * BORDERW] = 0;
+  B[x * BORDERW + BORDERW - 1] = 0;
 }
 
 __global__ void finalize(float *R, float *G, float *B) {
