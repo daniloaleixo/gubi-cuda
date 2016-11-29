@@ -26,3 +26,6 @@ build:
 
 clean:
 	rm -f $(PROJECT_NAME)
+
+.PHONY: all build clean
+
