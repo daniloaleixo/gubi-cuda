@@ -12,10 +12,9 @@
 CUDAPATH = $(which nvcc | sed 's!/bin/nvcc!!')
 
 NVCC = nvcc
-CC = clang
+CC = gcc
 
 PROJECT_NAME = altfisica
-BUILD_DIR = build
 
 CFLAGS = -O3 -c -m64 -I$(CUDAPATH)/include -I/opt/cuda/samples/common/inc/
 NVCCFLAGS = -O3 -c -I$(CUDAPATH)/include -I/opt/cuda/samples/common/inc/
@@ -23,11 +22,8 @@ LFLAGS = -m64 -L$(CUDAPATH)/lib -lcuda -lcudart -lm
 
 all: build clean
 
-build: build_dir gpu
-	$(NVCC) $(LFLAGS) -o $(BUILD_DIR)/$(PROJECT_NAME) *.o
-
-build_dir:
-	mkdir -p $(BUILD_DIR)
+build: gpu
+	$(NVCC) $(LFLAGS) -o $(PROJECT_NAME) *.o
 
 gpu:
 	$(NVCC) $(NVCCFLAGS) *.cu

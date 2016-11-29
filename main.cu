@@ -302,9 +302,9 @@ int readPPM(const char* file, float **R, float **G, float **B) {
 }
 
 int main(int argc, char const *argv[]) {	
-  if (argc != 5) {
+  if (argc < 4) {
     printf("Uso:\n");
-    printf("%s entrada saida num_iters num_procs\n", argv[0]);
+    printf("%s entrada saida num_iters [num_procs]\n", argv[0]);
     printf("Nota: num_procs é ignorado pois usamos CUDA\n");
     return 0;
   }

@@ -1,6 +1,3 @@
-
-
-
 # MAC0431 - Introdução a Computação Paralela e Distríbuida
 
 ## Integrantes     
