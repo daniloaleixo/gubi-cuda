@@ -160,9 +160,13 @@ __global__ void finalize(float *R, float *G, float *B) {
   if (R[y*BORDERW + x] > 1) R[y*BORDERW + x] = 1;
   if (B[y*BORDERW + x] > 1) B[y*BORDERW + x] = 1;
 
+  if (R[y*BORDERW + x] < 0) R[y*BORDERW + x] = 0;
+  if (B[y*BORDERW + x] < 0) B[y*BORDERW + x] = 0;
+
   atomicAdd(&G[y*BORDERW + x], atan2f(B[y*BORDERW + x], R[y*BORDERW + x])/(2*PI));
 
   if (G[y*BORDERW + x] > 1) G[y*BORDERW + x] = 0;
+  if (G[y*BORDERW + x] < 0) G[y*BORDERW + x] = 0;
 }
 
 // the wrapper around the kernel call for main program to call.
