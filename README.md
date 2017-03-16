@@ -22,11 +22,11 @@ A figura 1 mostra a disposição dos vetores e da componente G, para o pixel (.7
 #### Interações ####
 Para simplificar o cálculo, cada pixel interage apenas com seus primeiros vizinhos (acima, abaixo, direita e esquerda). A intensidade da interação
 depende das projeções de R e B nos eixos.
-<img align="right" src="/componentes.png">
+<div><img align="left" src="/componentes.png"></div>
 Para a componente de cor Cij do pixel (i, j), onde C pode ser R ou B (a cor verde será tratada a seguir), sejam (Cijx, Cijy) suas componentes horizontal e vertical, respectivamente.
 Uma parte do valor de Cij será transferida para os vizinhos que se encontram na mesma direção. Por exemplo, se Cijx > 0, parte do seu valor será acrescido a Ci+1,jx, caso contrário, a trasnferência se dará a Ci−1,jx. O procedimento é análogo para a outra componente.
 O valor transferido depende do vizinho que o recebe, segundo a seguinte fórmula:
-![Imagem](/equacao.png)
+<div><img align="left" src="/equacao.png"></div>
 Após todas as transferências, cada pixel deve ser verificado e eventualmente corrigido para que não possua nenhuma cor com valor maior que 1 menor do que 0. Quando um valor passa de 1., o excedente deve ser redistribuído entre os vizinhos uniformemente, desde que isto não provoque novo estouro.
 A componente G é atualizada de acordo com os valores obtidos após a atualização de R e B. Considere o vetor (R, B), o ângulo que este vetor forma com a vertical, no sentido horário, deve ser somado a θG e G deve ser corrigido de acordo.
 Nota: As bordas são consideradas fixas e nunca se alteram.
